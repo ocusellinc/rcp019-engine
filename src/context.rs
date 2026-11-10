@@ -126,7 +126,7 @@ impl<T> Engine<T> {
     /// Add or override a function with the given name
     ///
     /// ```
-    /// use rets_expression::{Engine, function::{ListFunction, SetFunction}};
+    /// use rcp019_engine::{Engine, function::{ListFunction, SetFunction}};
     ///
     /// let mut engine = Engine::empty();
     /// # let mut engine: Engine<()> = engine; // Provide a type
@@ -140,7 +140,7 @@ impl<T> Engine<T> {
     /// Add or override a function with the given name
     ///
     /// ```
-    /// use rets_expression::{Engine, function::{ListFunction, SetFunction}};
+    /// use rcp019_engine::{Engine, function::{ListFunction, SetFunction}};
     ///
     /// let engine = Engine::empty()
     ///     .with_function("LIST", Box::new(ListFunction))
