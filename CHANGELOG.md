@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/paulredmond/rets_expression/compare/v1.1.1...v1.1.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* reject comparisons with a missing right-hand side ([#10](https://github.com/paulredmond/rets_expression/issues/10)) ([a64fa67](https://github.com/paulredmond/rets_expression/commit/a64fa674446fd40a893cacf6f4827d6d7836345f))
+
 ## [1.1.1](https://github.com/paulredmond/rets_expression/compare/v1.1.0...v1.1.1) (2026-08-20)
 
 
