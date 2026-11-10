@@ -7,7 +7,7 @@
 //! ## Example
 //!
 //! ```
-//! use rets_expression::{Expression, Engine, EvaluateContext};
+//! use rcp019_engine::{Expression, Engine, EvaluateContext};
 //! use serde_json::json;
 //!
 //! // Parse an expression
@@ -1275,7 +1275,7 @@ impl core::error::Error for Error {}
 /// ## Example
 ///
 /// ```
-/// use rets_expression::{Expression, Visitor, FunctionNode, LiteralNode};
+/// use rcp019_engine::{Expression, Visitor, FunctionNode, LiteralNode};
 /// let mut expression = "5 .IN. (1, 2, Three, LAST Four, Five)"
 ///     .parse::<Expression>()
 ///     .unwrap();

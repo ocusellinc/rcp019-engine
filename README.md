@@ -1,12 +1,18 @@
-An implementation of [RCP 19][rcp19] (RETS Validation Expressions) from the [RESO
-Transport group][transport].
+# rcp019-engine
+
+A parser and evaluator for [RESO RCP-019][rcp19] Validation Expressions (formerly "RETS
+Validation Expressions") from the [RESO Transport group][transport].
 
 [transport]: https://github.com/RESOStandards/transport
 [rcp19]: https://github.com/RESOStandards/transport/blob/main/web-api-validation-expression.md
 
-See [the docs](https://docs.rs/rets_expression) for usage.
+Run `cargo doc --open` for API documentation.
 
-This repo tests against the compliance tests at [https://github.com/zenlist/reso-rcp19-compliance-tests](https://github.com/zenlist/reso-rcp19-compliance-tests)
+This crate began as a fork of [`zenlist/rets_expression`](https://github.com/zenlist/rets_expression)
+by Bryan Burgers (MIT, see `LICENSE.md`) and was renamed from `rets_expression` in v2.0.0. It is
+maintained independently; changes are not sent upstream.
+
+It is tested against the compliance tests at [https://github.com/zenlist/reso-rcp19-compliance-tests](https://github.com/zenlist/reso-rcp19-compliance-tests)
 
 ## Installation
 
@@ -14,14 +20,15 @@ Add to your project's `Cargo.toml` using a specific release tag (recommended):
 
 ```toml
 [dependencies]
-rets_expression = { git = "https://github.com/paulredmond/rets_expression", tag = "v1.0.0" }
+rcp019-engine = { git = "https://github.com/ocusellinc/rcp019-engine", tag = "v2.0.0" }
 ```
 
-Or track the latest `main` branch:
+The library is imported as `rcp019_engine`. To keep existing `rets_expression::` imports while
+migrating, alias the package instead:
 
 ```toml
 [dependencies]
-rets_expression = { git = "https://github.com/paulredmond/rets_expression", branch = "main" }
+rets_expression = { git = "https://github.com/ocusellinc/rcp019-engine", tag = "v2.0.0", package = "rcp019-engine" }
 ```
 
 Then run `cargo build` to fetch and compile the dependency.
@@ -49,7 +56,7 @@ Every commit to `main` must use the [Conventional Commits](https://www.conventio
 # Examples
 feat: add support for negative number literals
 fix: handle NULL in arithmetic expressions
-chore: update winnow to 0.6.20
+chore: update winnow to 1.0.5
 docs: add release workflow documentation
 ```
 
