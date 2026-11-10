@@ -15,8 +15,19 @@ jobs:
           submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build without std
+        run: cargo build --no-default-features
 
       - name: Run tests
         run: cargo test

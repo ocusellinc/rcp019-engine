@@ -6,7 +6,7 @@ use winnow::{
     combinator::{alt, cut_err, delimited, fail, opt, preceded, separated, separated_foldl1},
     prelude::*,
     token::{any, one_of},
-    Located,
+    LocatingSlice,
 };
 
 use super::token::{lex, Atom, BareKeyword, BinaryOperator, DottedKeyword, Identifier, Token};
@@ -18,23 +18,23 @@ use crate::{
 
 pub(crate) fn parse(input: &str) -> Result<Expression, String> {
     let tokens = lex
-        .parse(Located::new(input))
+        .parse(LocatingSlice::new(input))
         .map_err(|err| format!("Error at {}", err.offset()))?;
 
-    let mut tokens = tokens
+    let tokens = tokens
         .into_iter()
         .filter(|token| !matches!(token, Token::Whitespace(_) | Token::Comment(_)))
         .collect::<Vec<_>>();
 
-    exp.parse(&mut tokens)
+    exp.parse(&tokens)
         .map_err(|err| format!("Error at {}", err.offset()))
 }
 
-fn exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     or_exp(input)
 }
 
-fn or_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn or_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     let mut list: Vec<_> = separated(1.., and_exp, DottedKeyword::Or).parse_next(input)?;
 
     let expr = if list.len() == 1 {
@@ -45,7 +45,7 @@ fn or_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     Ok(expr)
 }
 
-fn and_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn and_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     let mut list: Vec<_> = separated(1.., not_exp, DottedKeyword::And).parse_next(input)?;
 
     let expr = if list.len() == 1 {
@@ -56,7 +56,7 @@ fn and_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     Ok(expr)
 }
 
-fn not_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn not_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     alt((
         preceded(DottedKeyword::Not, not_exp).map(|exp| Expression::from(NotNode::new(exp))),
         eq_exp,
@@ -64,7 +64,7 @@ fn not_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn eq_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn eq_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     let l = cmp_exp.parse_next(input)?;
 
     // `opt` rewinds the input when the right-hand side fails, so a dangling operator
@@ -84,7 +84,7 @@ fn eq_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     })
 }
 
-fn cmp_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn cmp_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     let l = cnt_exp(input)?;
 
     // `opt` rewinds the input when the right-hand side fails, so a dangling operator
@@ -106,7 +106,7 @@ fn cmp_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     })
 }
 
-fn cnt_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn cnt_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     let l = sum_exp(input)?;
 
     // `opt` rewinds the input when the right-hand side fails, so a dangling operator
@@ -126,8 +126,8 @@ fn cnt_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     })
 }
 
-fn sum_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
-    fn op(input: &mut &[Token<'_>]) -> PResult<ExpressionOp> {
+fn sum_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
+    fn op(input: &mut &[Token<'_>]) -> ModalResult<ExpressionOp> {
         alt((
             BinaryOperator::Plus.value(ExpressionOp::Add),
             BinaryOperator::Minus.value(ExpressionOp::Sub),
@@ -144,8 +144,8 @@ fn sum_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn prod_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
-    fn op(input: &mut &[Token<'_>]) -> PResult<ExpressionOp> {
+fn prod_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
+    fn op(input: &mut &[Token<'_>]) -> ModalResult<ExpressionOp> {
         alt((
             BinaryOperator::Asterisk.value(ExpressionOp::Mul),
             BinaryOperator::Slash.value(ExpressionOp::Div),
@@ -162,7 +162,7 @@ fn prod_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn atom_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn atom_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     alt((
         unary_minus_exp,
         func_exp,
@@ -174,7 +174,7 @@ fn atom_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn unary_minus_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn unary_minus_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     (BinaryOperator::Minus, atom_exp)
         .map(|(_, inner)| {
             let zero = Expression::from(LiteralNode::new(serde_json::Value::from(0i64)));
@@ -183,13 +183,13 @@ fn unary_minus_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
         .parse_next(input)
 }
 
-fn parenthesized_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn parenthesized_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     (Atom::LeftParen, exp, Atom::RightParen)
         .map(|(_, exp, _)| exp)
         .parse_next(input)
 }
 
-fn list_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn list_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     (
         Atom::LeftParen,
         separated(0.., exp, Atom::Comma),
@@ -200,7 +200,7 @@ fn list_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
 }
 
 // TODO: rename this to iif_expression?
-fn func_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn func_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     (BareKeyword::Iif, Atom::LeftParen).parse_next(input)?;
 
     cut_err((exp, Atom::Comma, exp, Atom::Comma, exp, Atom::RightParen))
@@ -213,7 +213,7 @@ fn func_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
 }
 
 // TODO: rename to func_exp?
-fn collection_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn collection_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     (
         retsname,
         Atom::LeftParen,
@@ -226,7 +226,7 @@ fn collection_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
         .parse_next(input)
 }
 
-fn value_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn value_exp(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     alt((
         spec_value,
         fieldname,
@@ -238,13 +238,13 @@ fn value_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn fieldname(input: &mut &[Token<'_>]) -> PResult<Expression> {
-    fn just_name(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn fieldname(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
+    fn just_name(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
         retsname
             .map(|val| Expression::from(FieldNode::new(val.name())))
             .parse_next(input)
     }
-    fn last_with_name(input: &mut &[Token<'_>]) -> PResult<Expression> {
+    fn last_with_name(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
         preceded(BareKeyword::Last, retsname)
             .map(|val| Expression::from(LastFieldNode::new(val.name())))
             .parse_next(input)
@@ -261,7 +261,7 @@ fn fieldname(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn spec_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn spec_value(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     alt((
         DottedKeyword::Empty.value(Expression::from(LiteralNode::new(serde_json::Value::Null))),
         DottedKeyword::True.value(Expression::from(LiteralNode::new(serde_json::Value::Bool(
@@ -278,7 +278,7 @@ fn spec_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn char_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn char_value(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     any.verify_map(|token: Token<'_>| match token {
         Token::SingleQuotedTerm(t) => Some(Expression::from(LiteralNode::new(json!(t.value())))),
         Token::DoubleQuotedTerm(t) => Some(Expression::from(LiteralNode::new(json!(t.value())))),
@@ -287,11 +287,11 @@ fn char_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn time_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn time_value(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     fail.parse_next(input)
 }
 
-fn int_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn int_value(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     any.verify_map(|token: Token<'_>| match token {
         Token::Int(t) => t
             .as_str()
@@ -303,7 +303,7 @@ fn int_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn float_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
+fn float_value(input: &mut &[Token<'_>]) -> ModalResult<Expression> {
     any.verify_map(|token: Token<'_>| match token {
         Token::Float(t) => t
             .as_str()
@@ -315,7 +315,7 @@ fn float_value(input: &mut &[Token<'_>]) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn retsname<'a>(input: &mut &[Token<'a>]) -> PResult<Identifier<'a>> {
+fn retsname<'a>(input: &mut &[Token<'a>]) -> ModalResult<Identifier<'a>> {
     let token = one_of(|token| matches!(token, Token::Identifier(_))).parse_next(input)?;
     match token {
         Token::Identifier(id) => Ok(id),

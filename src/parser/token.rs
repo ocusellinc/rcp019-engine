@@ -1,12 +1,12 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops;
-use winnow::ascii::{alpha1, digit1, escaped_transform, take_escaped};
+use winnow::ascii::{alpha1, digit1, escaped, take_escaped};
 use winnow::combinator::{alt, eof, opt, repeat};
 use winnow::error::{InputError, ParserError};
 use winnow::stream::AsChar;
 use winnow::token::{any, none_of, one_of, take_until, take_while};
-use winnow::{prelude::*, Located};
+use winnow::{prelude::*, LocatingSlice};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token<'a> {
@@ -98,7 +98,7 @@ pub enum BinaryOperator {
 impl<'s, 't, E: ParserError<&'s [Token<'t>]>> Parser<&'s [Token<'t>], BinaryOperator, E>
     for BinaryOperator
 {
-    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> PResult<BinaryOperator, E> {
+    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> Result<BinaryOperator, E> {
         any.verify_map(|token: Token<'_>| match token {
             Token::BinaryOperator(b) if b == *self => Some(b),
             _ => None,
@@ -142,7 +142,7 @@ pub enum DottedKeyword {
 impl<'s, 't, E: ParserError<&'s [Token<'t>]>> Parser<&'s [Token<'t>], DottedKeyword, E>
     for DottedKeyword
 {
-    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> PResult<DottedKeyword, E> {
+    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> Result<DottedKeyword, E> {
         any.verify_map(|token: Token<'_>| match token {
             Token::DottedKeyword(b) if b == *self => Some(b),
             _ => None,
@@ -160,7 +160,7 @@ pub enum BareKeyword {
 impl<'s, 't, E: ParserError<&'s [Token<'t>]>> Parser<&'s [Token<'t>], BareKeyword, E>
     for BareKeyword
 {
-    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> PResult<BareKeyword, E> {
+    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> Result<BareKeyword, E> {
         any.verify_map(|token: Token<'_>| match token {
             Token::BareKeyword(b) if b == *self => Some(b),
             _ => None,
@@ -170,7 +170,7 @@ impl<'s, 't, E: ParserError<&'s [Token<'t>]>> Parser<&'s [Token<'t>], BareKeywor
 }
 
 impl<'s, 't, E: ParserError<&'s [Token<'t>]>> Parser<&'s [Token<'t>], Atom, E> for Atom {
-    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> PResult<Atom, E> {
+    fn parse_next(&mut self, input: &mut &'s [Token<'t>]) -> Result<Atom, E> {
         any.verify_map(|token: Token<'_>| match token {
             Token::Atom(b) if b == *self => Some(b),
             _ => None,
@@ -189,49 +189,51 @@ impl<'a> winnow::stream::ContainsToken<Token<'a>> for Token<'a> {
 impl<'a, 'b> winnow::stream::ContainsToken<Token<'a>> for &'_ [Token<'b>] {
     #[inline]
     fn contains_token(&self, token: Token<'a>) -> bool {
-        self.iter().any(|t| *t == token)
+        self.contains(&token)
     }
 }
 
 impl<'a, 'b, const LEN: usize> winnow::stream::ContainsToken<Token<'a>> for &'_ [Token<'b>; LEN] {
     #[inline]
     fn contains_token(&self, token: Token<'a>) -> bool {
-        self.iter().any(|t| *t == token)
+        self.contains(&token)
     }
 }
 
 impl<'a, 'b, const LEN: usize> winnow::stream::ContainsToken<Token<'a>> for [Token<'b>; LEN] {
     #[inline]
     fn contains_token(&self, token: Token<'a>) -> bool {
-        self.iter().any(|t| *t == token)
+        self.contains(&token)
     }
 }
 
-pub fn lex<'a>(i: &mut Located<&'a str>) -> PResult<Vec<Token<'a>>> {
+pub fn lex<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Vec<Token<'a>>> {
     repeat(1.., token).parse_next(i)
 }
 
-pub fn token<'a>(i: &mut Located<&'a str>) -> PResult<Token<'a>> {
+pub fn token<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Token<'a>> {
+    // Order matters (first match wins). Nested because `alt` takes at most 10 alternatives.
     alt((
-        whitespace,
-        Comment::parse.map(Token::Comment),
-        BareKeyword::parse.map(Token::BareKeyword),
-        Identifier::parse.map(Token::Identifier),
-        DottedKeyword::parse.map(Token::DottedKeyword),
-        BinaryOperator::parse.map(Token::BinaryOperator),
-        Float::parse.map(Token::Float),
-        Int::parse.map(Token::Int),
-        Atom::parse.map(Token::Atom),
-        SingleQuotedTerm::parse.map(Token::SingleQuotedTerm),
-        DoubleQuotedTerm::parse.map(Token::DoubleQuotedTerm),
-        // double_quoted_term,
-        // iso_timestamp,
-        // iso_date,
+        alt((
+            whitespace,
+            Comment::parse.map(Token::Comment),
+            BareKeyword::parse.map(Token::BareKeyword),
+            Identifier::parse.map(Token::Identifier),
+            DottedKeyword::parse.map(Token::DottedKeyword),
+            BinaryOperator::parse.map(Token::BinaryOperator),
+        )),
+        alt((
+            Float::parse.map(Token::Float),
+            Int::parse.map(Token::Int),
+            Atom::parse.map(Token::Atom),
+            SingleQuotedTerm::parse.map(Token::SingleQuotedTerm),
+            DoubleQuotedTerm::parse.map(Token::DoubleQuotedTerm),
+        )),
     ))
     .parse_next(i)
 }
 
-fn whitespace<'a>(i: &mut Located<&'a str>) -> PResult<Token<'a>> {
+fn whitespace<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Token<'a>> {
     take_while(1.., |char: char| char.is_whitespace())
         .map(Token::Whitespace)
         .parse_next(i)
@@ -241,7 +243,7 @@ impl<'a> Identifier<'a> {
     pub fn name(self) -> &'a str {
         self.0
     }
-    fn parse(i: &mut Located<&'a str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Self> {
         (
             one_of(|c: char| c.is_alpha() || c == '_'),
             take_while(0.., |c: char| c.is_alphanum() || c == '_'),
@@ -254,19 +256,19 @@ impl<'a> Identifier<'a> {
 }
 
 impl<'a> Comment<'a> {
-    fn parse(i: &mut Located<&'a str>) -> PResult<Comment<'a>> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Comment<'a>> {
         alt((single_line_comment, multi_line_comment)).parse_next(i)
     }
 }
 
-fn single_line_comment<'a>(i: &mut Located<&'a str>) -> PResult<Comment<'a>> {
+fn single_line_comment<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Comment<'a>> {
     ("//", take_while(0.., |x| x != '\n'), alt(("\n", eof)))
         .take()
         .map(Comment)
         .parse_next(i)
 }
 
-fn multi_line_comment<'a>(i: &mut Located<&'a str>) -> PResult<Comment<'a>> {
+fn multi_line_comment<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Comment<'a>> {
     ("/*", take_until(0.., "*/"), "*/")
         .take()
         .map(Comment)
@@ -274,8 +276,8 @@ fn multi_line_comment<'a>(i: &mut Located<&'a str>) -> PResult<Comment<'a>> {
 }
 
 impl DottedKeyword {
-    fn parse(i: &mut Located<&'_ str>) -> PResult<Self> {
-        // TODO: How do we use `dispatch!` with a Located<&'_, str>?
+    fn parse(i: &mut LocatingSlice<&'_ str>) -> ModalResult<Self> {
+        // TODO: How do we use `dispatch!` with a LocatingSlice<&'_, str>?
         (".", alpha1, ".")
             .verify_map(|(_, s, _)| match s {
                 "OR" => Some(DottedKeyword::Or),
@@ -299,7 +301,7 @@ impl DottedKeyword {
 }
 
 impl Atom {
-    fn parse(i: &mut Located<&'_ str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'_ str>) -> ModalResult<Self> {
         alt((
             "(".value(Atom::LeftParen),
             ")".value(Atom::RightParen),
@@ -312,27 +314,32 @@ impl Atom {
 }
 
 impl BinaryOperator {
-    fn parse(i: &mut Located<&'_ str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'_ str>) -> ModalResult<Self> {
+        // Order matters (`<=` before `<`). Nested because `alt` takes at most 10 alternatives.
         alt((
-            "=".value(BinaryOperator::Equal),
-            "!=".value(BinaryOperator::NotEqual),
-            "<=".value(BinaryOperator::LessThanEqual),
-            "<".value(BinaryOperator::LessThan),
-            ">=".value(BinaryOperator::GreaterThanEqual),
-            ">".value(BinaryOperator::GreaterThan),
-            "+".value(BinaryOperator::Plus),
-            "-".value(BinaryOperator::Minus),
-            "*".value(BinaryOperator::Asterisk),
-            "/".value(BinaryOperator::Slash),
-            "||".value(BinaryOperator::DoublePipe),
+            alt((
+                "=".value(BinaryOperator::Equal),
+                "!=".value(BinaryOperator::NotEqual),
+                "<=".value(BinaryOperator::LessThanEqual),
+                "<".value(BinaryOperator::LessThan),
+                ">=".value(BinaryOperator::GreaterThanEqual),
+                ">".value(BinaryOperator::GreaterThan),
+            )),
+            alt((
+                "+".value(BinaryOperator::Plus),
+                "-".value(BinaryOperator::Minus),
+                "*".value(BinaryOperator::Asterisk),
+                "/".value(BinaryOperator::Slash),
+                "||".value(BinaryOperator::DoublePipe),
+            )),
         ))
         .parse_next(i)
     }
 }
 
 impl BareKeyword {
-    fn parse(i: &mut Located<&'_ str>) -> PResult<Self> {
-        // TODO: How do we use `dispatch!` with a Located<&'_, str>?
+    fn parse(i: &mut LocatingSlice<&'_ str>) -> ModalResult<Self> {
+        // TODO: How do we use `dispatch!` with a LocatingSlice<&'_, str>?
         alpha1
             .verify_map(|s| match s {
                 "IIF" => Some(BareKeyword::Iif),
@@ -344,7 +351,7 @@ impl BareKeyword {
 }
 
 impl<'a> SingleQuotedTerm<'a> {
-    fn parse(i: &mut Located<&'a str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Self> {
         (
             '\'',
             take_escaped(none_of(['\'', '\\']), '\\', one_of(['\\', '\''])),
@@ -356,8 +363,8 @@ impl<'a> SingleQuotedTerm<'a> {
     pub fn value(&self) -> String {
         let mut input = self.0;
 
-        pub fn get_value<'s>(i: &mut &'s str) -> PResult<String, InputError<&'s str>> {
-            escaped_transform(
+        pub fn get_value<'s>(i: &mut &'s str) -> ModalResult<String, InputError<&'s str>> {
+            escaped(
                 take_while(1.., |c: char| c != '\'' && c != '\\'),
                 '\\',
                 alt(("\\".value("\\"), "\'".value("'"))),
@@ -370,7 +377,7 @@ impl<'a> SingleQuotedTerm<'a> {
 }
 
 impl<'a> DoubleQuotedTerm<'a> {
-    fn parse(i: &mut Located<&'a str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Self> {
         (
             '"',
             take_escaped(none_of(['"', '\\']), '\\', one_of(['\\', 'n', 't', '"'])),
@@ -382,8 +389,8 @@ impl<'a> DoubleQuotedTerm<'a> {
     pub fn value(&self) -> String {
         let mut input = self.0;
 
-        pub fn get_value<'s>(i: &mut &'s str) -> PResult<String, InputError<&'s str>> {
-            escaped_transform(
+        pub fn get_value<'s>(i: &mut &'s str) -> ModalResult<String, InputError<&'s str>> {
+            escaped(
                 take_while(1.., |c: char| c != '"' && c != '\\'),
                 '\\',
                 alt((
@@ -401,7 +408,7 @@ impl<'a> DoubleQuotedTerm<'a> {
 }
 
 impl<'a> Int<'a> {
-    fn parse(i: &mut Located<&'a str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Self> {
         (opt(one_of(('+', '-'))), digit1)
             .take()
             .verify(|x: &str| x.parse::<i64>().ok().is_some())
@@ -414,9 +421,9 @@ impl<'a> Int<'a> {
 }
 
 impl<'a> Float<'a> {
-    fn parse(i: &mut Located<&'a str>) -> PResult<Self> {
+    fn parse(i: &mut LocatingSlice<&'a str>) -> ModalResult<Self> {
         // Case one: .42
-        fn dot_number<'a>(i: &mut Located<&'a str>) -> PResult<Float<'a>> {
+        fn dot_number<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Float<'a>> {
             ('.', take_while(1.., |c: char| c.is_numeric()))
                 .take()
                 .map(Float)
@@ -424,7 +431,7 @@ impl<'a> Float<'a> {
         }
 
         // Case two: 42e42 and 42.42e42
-        fn number_e<'a>(i: &mut Located<&'a str>) -> PResult<Float<'a>> {
+        fn number_e<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Float<'a>> {
             (
                 take_while(1.., |c: char| c.is_numeric()),
                 '.',
@@ -438,7 +445,7 @@ impl<'a> Float<'a> {
         }
 
         // Case three: 42. and 42.42
-        fn number_dot_number<'a>(i: &mut Located<&'a str>) -> PResult<Float<'a>> {
+        fn number_dot_number<'a>(i: &mut LocatingSlice<&'a str>) -> ModalResult<Float<'a>> {
             (
                 take_while(1.., |c: char| c.is_numeric()),
                 '.',
