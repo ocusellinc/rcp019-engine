@@ -1185,9 +1185,7 @@ impl Expression {
                 Ok(Cow::Owned(serde_json::json!(args)))
             }
             Expression::Entry => {
-                let field_name = context
-                    .entry_field()
-                    .ok_or(Error::EntryFieldNotProvided)?;
+                let field_name = context.entry_field().ok_or(Error::EntryFieldNotProvided)?;
                 Ok(context
                     .value()
                     .get(field_name)
@@ -1195,9 +1193,7 @@ impl Expression {
                     .unwrap_or_else(|| Cow::Owned(Value::Null)))
             }
             Expression::OldValue => {
-                let field_name = context
-                    .entry_field()
-                    .ok_or(Error::EntryFieldNotProvided)?;
+                let field_name = context.entry_field().ok_or(Error::EntryFieldNotProvided)?;
                 if let Some(previous_value) = context.previous_value() {
                     Ok(previous_value
                         .get(field_name)
@@ -1262,9 +1258,9 @@ impl core::fmt::Display for Error {
             Error::DivideByZero => f.write_str("Divide by zero"),
             Error::UnknownFunction(name) => write!(f, "Unknown function: {name}"),
             Error::Function(err) => write!(f, "Error while executing function: {err}"),
-            Error::EntryFieldNotProvided => {
-                f.write_str("`.ENTRY.` or `.OLDVALUE.` was used but no entry field was provided in the context")
-            }
+            Error::EntryFieldNotProvided => f.write_str(
+                "`.ENTRY.` or `.OLDVALUE.` was used but no entry field was provided in the context",
+            ),
         }
     }
 }
@@ -1546,9 +1542,7 @@ mod tests {
 
     #[test]
     fn test_entry_evaluates_to_field_value() {
-        let expression = ".ENTRY. = .EMPTY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".ENTRY. = .EMPTY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "Remarks": "Hello" });
         let context = EvaluateContext::new(&engine, &data).with_entry_field("Remarks");
@@ -1558,9 +1552,7 @@ mod tests {
 
     #[test]
     fn test_entry_evaluates_to_null_for_missing_field() {
-        let expression = ".ENTRY. = .EMPTY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".ENTRY. = .EMPTY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({});
         let context = EvaluateContext::new(&engine, &data).with_entry_field("Remarks");
@@ -1570,9 +1562,7 @@ mod tests {
 
     #[test]
     fn test_entry_errors_without_entry_field() {
-        let expression = ".ENTRY. = .EMPTY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".ENTRY. = .EMPTY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "Remarks": "Hello" });
         let context = EvaluateContext::new(&engine, &data);
@@ -1582,9 +1572,7 @@ mod tests {
 
     #[test]
     fn test_oldvalue_evaluates_to_previous_value() {
-        let expression = ".OLDVALUE. != .ENTRY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".OLDVALUE. != .ENTRY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "Status": "Active" });
         let previous = json!({ "Status": "Pending" });
@@ -1597,36 +1585,28 @@ mod tests {
 
     #[test]
     fn test_oldvalue_errors_without_previous_value() {
-        let expression = ".OLDVALUE. != .EMPTY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".OLDVALUE. != .EMPTY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "Status": "Active" });
-        let context = EvaluateContext::new(&engine, &data)
-            .with_entry_field("Status");
+        let context = EvaluateContext::new(&engine, &data).with_entry_field("Status");
         let result = expression.apply(context);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_oldvalue_errors_without_entry_field() {
-        let expression = ".OLDVALUE. != .EMPTY."
-            .parse::<Expression>()
-            .unwrap();
+        let expression = ".OLDVALUE. != .EMPTY.".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "Status": "Active" });
         let previous = json!({ "Status": "Pending" });
-        let context = EvaluateContext::new(&engine, &data)
-            .with_previous(&previous);
+        let context = EvaluateContext::new(&engine, &data).with_previous(&previous);
         let result = expression.apply(context);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_entry_in_function_evaluates() {
-        let expression = "STRLEN(CHAR(.ENTRY.)) > 0"
-            .parse::<Expression>()
-            .unwrap();
+        let expression = "STRLEN(CHAR(.ENTRY.)) > 0".parse::<Expression>().unwrap();
         let engine = Engine::default();
         let data = json!({ "ListingId": "12345" });
         let context = EvaluateContext::new(&engine, &data).with_entry_field("ListingId");

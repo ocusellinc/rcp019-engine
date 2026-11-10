@@ -178,7 +178,8 @@ struct Check {
 #[serde(untagged)]
 enum CheckResult {
     Expected(CheckResultExpected),
-    Error(CheckResultError),
+    // Only matched by shape so `untagged` can tell an expected-error case apart.
+    Error(#[allow(dead_code)] CheckResultError),
 }
 
 impl CheckResult {
