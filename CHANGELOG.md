@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/ocusellinc/rcp019-engine/compare/v1.1.2...v2.0.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* the package is now `rcp019-engine`. Dependents must update their Cargo.toml, either importing `rcp019_engine` or aliasing with `rets_expression = { git = "...", tag = "...", package = "rcp019-engine" }`.
+
+### Features
+
+* rename crate to rcp019-engine ([#14](https://github.com/ocusellinc/rcp019-engine/issues/14)) ([bf9e64a](https://github.com/ocusellinc/rcp019-engine/commit/bf9e64a74abcee10373c51a4fe9fac8b9afa6adc))
+
 ## [1.1.2](https://github.com/paulredmond/rets_expression/compare/v1.1.1...v1.1.2) (2026-11-10)
 
 

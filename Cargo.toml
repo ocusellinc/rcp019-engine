@@ -1,6 +1,6 @@
 [package]
 name = "rcp019-engine"
-version = "1.1.2"
+version = "2.0.0"
 authors = ["Paul Redmond", "Bryan Burgers <bryan@burgers.io>"]
 edition = "2021"
 license = "MIT"
