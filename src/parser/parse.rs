@@ -3,7 +3,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use serde_json::json;
 use winnow::{
-    combinator::{alt, cut_err, delimited, fail, preceded, separated, separated_foldl1},
+    combinator::{alt, cut_err, delimited, fail, opt, preceded, separated, separated_foldl1},
     prelude::*,
     token::{any, one_of},
     Located,
@@ -67,25 +67,29 @@ fn not_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
 fn eq_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     let l = cmp_exp.parse_next(input)?;
 
-    if let Ok((op, r)) = (
+    // `opt` rewinds the input when the right-hand side fails, so a dangling operator
+    // (`A =`) is left unconsumed and rejected instead of being silently dropped.
+    let rhs = opt((
         alt((
             BinaryOperator::NotEqual.value(ExpressionOp::Ne),
             BinaryOperator::Equal.value(ExpressionOp::Eq),
         )),
         cmp_exp,
-    )
-        .parse_next(input)
-    {
-        Ok(Expression::from(OpNode::new(l, op, r)))
-    } else {
-        Ok(l)
-    }
+    ))
+    .parse_next(input)?;
+
+    Ok(match rhs {
+        Some((op, r)) => Expression::from(OpNode::new(l, op, r)),
+        None => l,
+    })
 }
 
 fn cmp_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     let l = cnt_exp(input)?;
 
-    if let Ok((op, r)) = (
+    // `opt` rewinds the input when the right-hand side fails, so a dangling operator
+    // (`A =`) is left unconsumed and rejected instead of being silently dropped.
+    let rhs = opt((
         alt((
             BinaryOperator::LessThanEqual.value(ExpressionOp::Lte),
             BinaryOperator::LessThan.value(ExpressionOp::Lt),
@@ -93,31 +97,33 @@ fn cmp_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
             BinaryOperator::GreaterThan.value(ExpressionOp::Gt),
         )),
         cnt_exp,
-    )
-        .parse_next(input)
-    {
-        Ok(Expression::from(OpNode::new(l, op, r)))
-    } else {
-        Ok(l)
-    }
+    ))
+    .parse_next(input)?;
+
+    Ok(match rhs {
+        Some((op, r)) => Expression::from(OpNode::new(l, op, r)),
+        None => l,
+    })
 }
 
 fn cnt_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
     let l = sum_exp(input)?;
 
-    if let Ok((op, r)) = (
+    // `opt` rewinds the input when the right-hand side fails, so a dangling operator
+    // (`A =`) is left unconsumed and rejected instead of being silently dropped.
+    let rhs = opt((
         alt((
             DottedKeyword::Contains.value(ExpressionOp::Contains),
             DottedKeyword::In.value(ExpressionOp::In),
         )),
         sum_exp,
-    )
-        .parse_next(input)
-    {
-        Ok(Expression::from(OpNode::new(l, op, r)))
-    } else {
-        Ok(l)
-    }
+    ))
+    .parse_next(input)?;
+
+    Ok(match rhs {
+        Some((op, r)) => Expression::from(OpNode::new(l, op, r)),
+        None => l,
+    })
 }
 
 fn sum_exp(input: &mut &[Token<'_>]) -> PResult<Expression> {
@@ -401,7 +407,9 @@ mod tests {
     #[test]
     fn test_double_negative() {
         // `0 - -1` should parse as `0 - (0 - 1)` = 1
-        let expr = "0 - -1".parse::<Expression>().expect("double negative should parse");
+        let expr = "0 - -1"
+            .parse::<Expression>()
+            .expect("double negative should parse");
         let engine = Engine::default();
         let context = json!({});
         let ctx = EvaluateContext::new(&engine, &context);
@@ -467,5 +475,42 @@ mod tests {
         ".OLDVALUE. != .ENTRY."
             .parse::<Expression>()
             .expect(".OLDVALUE. compared to .ENTRY. should parse");
+    }
+
+    #[test]
+    fn test_dangling_operator_is_rejected() {
+        // Regression: a comparison operator with no right-hand side used to be consumed and
+        // dropped, so `A =` parsed as `A` and `IIF(A = , 1, 2)` as `IIF(A, 1, 2)`.
+        for input in [
+            "A =",
+            "A !=",
+            "A <",
+            "A >=",
+            "A .IN.",
+            "A .CONTAINS.",
+            "(A =)",
+            "IIF(A = , 1, 2)",
+            "ListPrice > .AND. B = 1",
+        ] {
+            assert!(
+                input.parse::<Expression>().is_err(),
+                "{input:?} should fail to parse"
+            );
+        }
+    }
+
+    #[test]
+    fn test_complete_comparisons_still_parse() {
+        for input in [
+            "A = B",
+            "A != 1",
+            "A < 2 .AND. B >= 3",
+            "A .IN. (1, 2)",
+            "IIF(A = 1, 1, 2)",
+        ] {
+            input
+                .parse::<Expression>()
+                .unwrap_or_else(|e| panic!("{input:?} should parse: {e}"));
+        }
     }
 }
